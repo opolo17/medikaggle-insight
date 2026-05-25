@@ -16,6 +16,14 @@ export const metadata: Metadata = {
   title: "MediKaggle Insight | New Competition Analyzer",
   description:
     "Enter medical AI challenge constraints and get SOTA baseline recommendations with match-ranked pipeline templates.",
+  icons: {
+    icon: [
+      { url: "/icon", sizes: "32x32", type: "image/png" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
+    shortcut: "/icon",
+  },
 };
 
 export default function RootLayout({
