@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="MediKaggle Insight">
+  <defs>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="55%" stop-color="#2dd4bf"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="180" height="180" rx="40" fill="#0b1120"/>
+  <rect x="6" y="6" width="168" height="168" rx="34" fill="none" stroke="url(#brand)" stroke-width="3" opacity="0.35"/>
+  <path
+    d="M28 108h18l9-31 13.5 50.5 13.5-62 12.5 48H108l6.5-20"
+    fill="none"
+    stroke="url(#brand)"
+    stroke-width="11"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <rect x="124" y="118" width="14" height="34" rx="5" fill="#10b981"/>
+  <rect x="144" y="128" width="14" height="24" rx="5" fill="#38bdf8"/>
+</svg>

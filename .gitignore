@@ -9,6 +9,7 @@
 
 # next.js
 /.next/
+/node_modules/.cache/
 /out/
 
 # production
