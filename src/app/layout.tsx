@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MediKaggle Insight | Clinical AI Experiment Navigator",
+  title: "MediKaggle Insight | New Competition Analyzer",
   description:
-    "Navigate medical Kaggle competitions with interactive filters, SOTA model trends, and copy-ready PyTorch pipelines.",
+    "Enter medical AI challenge constraints and get SOTA baseline recommendations with match-ranked pipeline templates.",
 };
 
 export default function RootLayout({
@@ -28,10 +28,19 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen font-sans`}
       >
-        <div className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-b from-slate-900/50 via-slate-950 to-slate-950" />
-        <div className="pointer-events-none fixed -left-40 top-0 -z-10 h-[28rem] w-[28rem] rounded-full bg-sky-500/5 blur-3xl" />
-        <div className="pointer-events-none fixed -right-40 top-1/4 -z-10 h-[28rem] w-[28rem] rounded-full bg-emerald-500/5 blur-3xl" />
-        {children}
+        <div
+          className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-b from-slate-900/50 via-slate-950 to-slate-950"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none fixed -left-40 top-0 -z-10 h-[28rem] w-[28rem] rounded-full bg-sky-500/5 blur-3xl"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none fixed -right-40 top-1/4 -z-10 h-[28rem] w-[28rem] rounded-full bg-emerald-500/5 blur-3xl"
+          aria-hidden
+        />
+        <div className="relative z-0 isolate">{children}</div>
       </body>
     </html>
   );

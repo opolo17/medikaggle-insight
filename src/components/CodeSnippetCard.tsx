@@ -1,18 +1,62 @@
 "use client";
 
-import type { KaggleCompetition } from "@/data/mockKaggleData";
+import {
+  getFullPipelineCode,
+  type KaggleCompetition,
+  type PipelineCodeSnippets,
+} from "@/data/mockKaggleData";
+import LossFormula from "@/components/LossFormula";
 import {
   BookOpen,
+  Box,
   Check,
   Copy,
   ExternalLink,
   FlaskConical,
   Gauge,
+  Layers,
+  Scale,
 } from "lucide-react";
+import { getMatchBadgeStyle } from "@/lib/matchRate";
 import { useCallback, useState } from "react";
 
 interface CodeSnippetCardProps {
   competition: KaggleCompetition;
+  matchRate: number | null;
+}
+
+type SnippetTab = keyof PipelineCodeSnippets;
+
+const TABS: {
+  key: SnippetTab;
+  label: string;
+  icon: typeof Box;
+}[] = [
+  { key: "model", label: "Model", icon: Box },
+  { key: "loss", label: "Loss", icon: Scale },
+  { key: "augmentation", label: "Augmentation", icon: Layers },
+];
+
+function MatchRateBadge({ matchRate }: { matchRate: number }) {
+  const { emoji, className } = getMatchBadgeStyle(matchRate);
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${className}`}
+    >
+      <span aria-hidden>{emoji}</span>
+      {matchRate}% Match
+    </span>
+  );
+}
+
+function Tag({ label, className }: { label: string; className: string }) {
+  return (
+    <span
+      className={`rounded-md border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${className}`}
+    >
+      {label}
+    </span>
+  );
 }
 
 const DOMAIN_COLORS: Record<KaggleCompetition["domain"], string> = {
@@ -34,67 +78,28 @@ const CHALLENGE_COLORS: Record<KaggleCompetition["challenge"], string> = {
   "Noisy Label": "bg-yellow-500/15 text-yellow-300 border-yellow-500/30",
 };
 
-/** Strip LaTeX delimiters for readable prototype display */
-function formatLossFormula(formula: string): string {
-  return formula
-    .replace(/^\$|\$$/g, "")
-    .replace(/\\text\{([^}]+)\}/g, "$1")
-    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1) / ($2)")
-    .replace(/\\sum_i?/g, "Σ")
-    .replace(/\\sum/g, "Σ")
-    .replace(/\\log/g, "log")
-    .replace(/\\sigma/g, "σ")
-    .replace(/\\alpha/g, "α")
-    .replace(/\\gamma/g, "γ")
-    .replace(/\\rho/g, "ρ")
-    .replace(/\\mathcal\{L\}_\{([^}]+)\}/g, "L_$1")
-    .replace(/\\big\[/g, "[")
-    .replace(/\\big\]/g, "]")
-    .replace(/\\left\(/g, "(")
-    .replace(/\\right\)/g, ")")
-    .replace(/\\\\/g, "")
-    .replace(/\\_/g, "_")
-    .replace(/\\{/g, "{")
-    .replace(/\\}/g, "}")
-    .replace(/[{}]/g, (m, i, s) => {
-      const prev = s[i - 1];
-      if (prev === "^" || prev === "_") return m;
-      return "";
-    })
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function Tag({
-  label,
-  className,
-}: {
-  label: string;
-  className: string;
-}) {
-  return (
-    <span
-      className={`rounded-md border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${className}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-export default function CodeSnippetCard({ competition }: CodeSnippetCardProps) {
+export default function CodeSnippetCard({
+  competition,
+  matchRate,
+}: CodeSnippetCardProps) {
+  const [activeTab, setActiveTab] = useState<SnippetTab>("model");
   const [copied, setCopied] = useState(false);
+  const fullCode = getFullPipelineCode(competition.codeSnippets);
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(competition.codeSnippet);
+      await navigator.clipboard.writeText(fullCode);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       setCopied(false);
     }
-  }, [competition.codeSnippet]);
+  }, [fullCode]);
 
-  const displayFormula = formatLossFormula(competition.lossFormula);
+  const handleTabChange = (tab: SnippetTab) => {
+    if (tab === activeTab) return;
+    setActiveTab(tab);
+  };
 
   return (
     <article className="flex flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900 shadow-card transition hover:border-slate-700 hover:bg-slate-800/80">
@@ -103,7 +108,12 @@ export default function CodeSnippetCard({ competition }: CodeSnippetCardProps) {
           <FlaskConical className="h-3.5 w-3.5 text-emerald-500" aria-hidden />
           <span className="font-mono">{competition.competitionName}</span>
         </div>
-        <h3 className="text-lg font-semibold text-slate-50">{competition.title}</h3>
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-lg font-semibold text-slate-50">
+            {competition.title}
+          </h3>
+          {matchRate !== null && <MatchRateBadge matchRate={matchRate} />}
+        </div>
         <div className="mt-3 flex flex-wrap gap-1.5">
           <Tag label={competition.domain} className={DOMAIN_COLORS[competition.domain]} />
           <Tag label={competition.task} className={TASK_COLORS[competition.task]} />
@@ -147,15 +157,15 @@ export default function CodeSnippetCard({ competition }: CodeSnippetCardProps) {
         </dl>
 
         <div className="rounded-lg border border-emerald-500/20 bg-gradient-to-br from-slate-950 to-slate-900 px-4 py-3 ring-1 ring-slate-700/50">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-emerald-500/80">
+          <p className="mb-2 w-full text-center text-[10px] font-semibold uppercase tracking-widest text-emerald-500/80">
             Loss formulation (LaTeX)
           </p>
-          <p
-            className="text-center font-serif text-lg leading-relaxed text-slate-100"
-            aria-label={`${competition.lossName} formula`}
-          >
-            {displayFormula}
-          </p>
+          <div className="loss-formula-box scrollbar-pipeline w-full">
+            <LossFormula
+              formula={competition.lossFormula}
+              label={`${competition.lossName} formula`}
+            />
+          </div>
         </div>
       </div>
 
@@ -168,9 +178,52 @@ export default function CodeSnippetCard({ competition }: CodeSnippetCardProps) {
             .py
           </span>
         </div>
-        <pre className="max-h-56 flex-1 overflow-auto bg-slate-950/90 p-4 font-mono text-xs leading-relaxed text-slate-300 md:max-h-64 md:px-5">
-          <code>{competition.codeSnippet}</code>
-        </pre>
+
+        <div
+          className="flex border-b border-slate-800 bg-slate-950/60"
+          role="tablist"
+          aria-label="Pipeline code modules"
+        >
+          {TABS.map(({ key, label, icon: Icon }) => {
+            const isActive = activeTab === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={`panel-${competition.id}-${key}`}
+                id={`tab-${competition.id}-${key}`}
+                onClick={() => handleTabChange(key)}
+                className={[
+                  "flex flex-1 items-center justify-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-medium transition-all duration-300",
+                  isActive
+                    ? "border-emerald-500 bg-slate-900/80 text-emerald-400"
+                    : "border-transparent text-slate-500 hover:bg-slate-900/40 hover:text-slate-300",
+                ].join(" ")}
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div
+          className="relative min-h-[11rem] bg-slate-950/90"
+          role="tabpanel"
+          id={`panel-${competition.id}-${activeTab}`}
+          aria-labelledby={`tab-${competition.id}-${activeTab}`}
+        >
+          <pre
+            key={activeTab}
+            className="code-panel scrollbar-pipeline h-full min-h-[11rem] p-4 font-mono text-xs leading-relaxed text-slate-300 transition-opacity duration-300 md:px-5"
+          >
+            <code className="block whitespace-pre">
+              {competition.codeSnippets[activeTab]}
+            </code>
+          </pre>
+        </div>
       </div>
 
       <footer className="flex flex-wrap gap-2 border-t border-slate-800 p-3 md:p-4">
@@ -187,7 +240,7 @@ export default function CodeSnippetCard({ competition }: CodeSnippetCardProps) {
           ) : (
             <>
               <Copy className="h-3.5 w-3.5" aria-hidden />
-              Copy Code
+              Copy Full Pipeline
             </>
           )}
         </button>

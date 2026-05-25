@@ -9,8 +9,16 @@ export type DomainFilter = Domain | "All";
 export type TaskFilter = Task | "All";
 export type ChallengeFilter = Challenge | "All";
 
+export interface PipelineCodeSnippets {
+  model: string;
+  loss: string;
+  augmentation: string;
+}
+
 export interface KaggleCompetition {
   id: string;
+  /** Higher = listed more recently (default sort when no filters) */
+  listedOrder: number;
   title: string;
   competitionName: string;
   domain: Domain;
@@ -23,12 +31,26 @@ export interface KaggleCompetition {
   metricValue: string;
   paperUrl: string;
   colabUrl: string;
-  codeSnippet: string;
+  codeSnippets: PipelineCodeSnippets;
+}
+
+export function getFullPipelineCode(snippets: PipelineCodeSnippets): string {
+  return [
+    "# --- Model ---",
+    snippets.model.trim(),
+    "",
+    "# --- Loss ---",
+    snippets.loss.trim(),
+    "",
+    "# --- Augmentation ---",
+    snippets.augmentation.trim(),
+  ].join("\n");
 }
 
 export const MOCK_KAGGLE_DATA: KaggleCompetition[] = [
   {
     id: "brats-2021",
+    listedOrder: 1,
     title: "BraTS 2021 Brain Tumor Segmentation",
     competitionName: "BraTS 2021",
     domain: "3D Image",
@@ -37,19 +59,15 @@ export const MOCK_KAGGLE_DATA: KaggleCompetition[] = [
     sotaModel: "Swin UNETR",
     lossName: "Dice Loss",
     lossFormula:
-      "$\\text{Dice Loss} = 1 - \\frac{2 \\sum_i p_i g_i}{\\sum_i p_i^2 + \\sum_i g_i^2}$",
+      "$\\text{Dice Loss} = 1 - \\frac{2 \\sum_{i} p_{i} g_{i}}{\\sum_{i} p_{i}^{2} + \\sum_{i} g_{i}^{2}}$",
     metricName: "Mean Dice (WT)",
     metricValue: "0.91",
     paperUrl: "https://arxiv.org/abs/2201.01266",
     colabUrl:
       "https://colab.research.google.com/github/Project-MONAI/tutorials/blob/main/3d_segmentation/swin_unetr_brats21_3d_segmentation.ipynb",
-    codeSnippet: `import torch
+    codeSnippets: {
+      model: `import torch
 from monai.networks.nets import SwinUNETR
-from monai.losses import DiceLoss
-from monai.transforms import (
-    Compose, LoadImaged, EnsureChannelFirstd,
-    ScaleIntensityRanged, RandFlipd, RandRotate90d,
-)
 
 model = SwinUNETR(
     img_size=(128, 128, 128),
@@ -57,9 +75,20 @@ model = SwinUNETR(
     out_channels=3,
     feature_size=48,
     use_checkpoint=True,
-).cuda()
+).cuda()`,
+      loss: `from monai.losses import DiceLoss
 
 dice_loss = DiceLoss(to_onehot_y=True, softmax=True)
+
+def training_step(batch, model):
+    images = batch["image"].cuda()
+    labels = batch["label"].cuda()
+    logits = model(images)
+    return dice_loss(logits, labels)`,
+      augmentation: `from monai.transforms import (
+    Compose, LoadImaged, EnsureChannelFirstd,
+    ScaleIntensityRanged, RandFlipd, RandRotate90d,
+)
 
 train_transforms = Compose([
     LoadImaged(keys=["image", "label"]),
@@ -70,16 +99,12 @@ train_transforms = Compose([
     ),
     RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=0),
     RandRotate90d(keys=["image", "label"], prob=0.5, max_k=3),
-])
-
-def training_step(batch):
-    images, labels = batch["image"].cuda(), batch["label"].cuda()
-    logits = model(images)
-    loss = dice_loss(logits, labels)
-    return loss`,
+])`,
+    },
   },
   {
     id: "med-specialty-ehr",
+    listedOrder: 2,
     title: "Medical Specialty Text Classification",
     competitionName: "MIMIC-III Specialty NLP",
     domain: "EHR",
@@ -88,22 +113,23 @@ def training_step(batch):
     sotaModel: "BioBERT",
     lossName: "Focal Loss",
     lossFormula:
-      "$\\text{FL}(p_t) = -\\alpha_t (1 - p_t)^{\\gamma} \\log(p_t)$",
+      "$\\mathrm{FL}(p_{t}) = -\\alpha_{t} (1 - p_{t})^{\\gamma} \\log(p_{t})$",
     metricName: "Macro F1",
     metricValue: "0.84",
     paperUrl: "https://arxiv.org/abs/1904.03323",
     colabUrl:
       "https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/text_classification.ipynb",
-    codeSnippet: `import torch
-import torch.nn as nn
-import torch.nn.functional as F
+    codeSnippets: {
+      model: `import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("emilyalsentzer/Bio_ClinicalBERT")
 model = AutoModelForSequenceClassification.from_pretrained(
     "emilyalsentzer/Bio_ClinicalBERT",
     num_labels=20,
-)
+)`,
+      loss: `import torch.nn as nn
+import torch.nn.functional as F
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=0.25, gamma=2.0):
@@ -116,20 +142,24 @@ class FocalLoss(nn.Module):
         pt = torch.exp(-ce)
         return (self.alpha * (1 - pt) ** self.gamma * ce).mean()
 
-focal = FocalLoss(gamma=2.0, alpha=0.25)
-optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
+focal = FocalLoss(gamma=2.0, alpha=0.25)`,
+      augmentation: `import torch
 
-def train_batch(texts, labels):
-    enc = tokenizer(texts, padding=True, truncation=True, return_tensors="pt")
-    logits = model(**enc).logits
-    loss = focal(logits, labels)
-    loss.backward()
-    optimizer.step()
-    optimizer.zero_grad()
-    return loss.item()`,
+def clinical_text_augment(
+    input_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
+    mask_prob: float = 0.15,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Token masking for EHR notes (MIMIC-style robustness)."""
+    mask = torch.rand(input_ids.shape) < mask_prob
+    input_ids = input_ids.clone()
+    input_ids[mask & attention_mask.bool()] = tokenizer.mask_token_id
+    return input_ids, attention_mask`,
+    },
   },
   {
     id: "rsna-pneumonia",
+    listedOrder: 3,
     title: "RSNA Pneumonia Detection Challenge",
     competitionName: "RSNA Pneumonia Detection",
     domain: "2D Image",
@@ -138,41 +168,16 @@ def train_batch(texts, labels):
     sotaModel: "EfficientDet",
     lossName: "CIoU Loss",
     lossFormula:
-      "$\\text{CIoU} = \\text{IoU} - \\frac{\\rho^2(b, b^{gt})}{c^2} - \\alpha v$",
+      "$\\mathrm{CIoU} = \\mathrm{IoU} - \\frac{d^{2}}{c^{2}} - \\alpha v$",
     metricName: "mAP @ IoU 0.5",
     metricValue: "0.27",
     paperUrl: "https://arxiv.org/abs/1911.08287",
     colabUrl:
       "https://colab.research.google.com/github/pytorch/vision/blob/main/references/detection/train.py",
-    codeSnippet: `import torch
+    codeSnippets: {
+      model: `import torch
 import torch.nn as nn
-from torchvision.models.detection import efficientnet_b0
-
-def ciou_loss(pred_boxes, target_boxes, eps=1e-7):
-    """Complete IoU for axis-aligned boxes [x1,y1,x2,y2]."""
-    px1, py1, px2, py2 = pred_boxes.unbind(-1)
-    tx1, ty1, tx2, ty2 = target_boxes.unbind(-1)
-
-    inter_x1 = torch.max(px1, tx1)
-    inter_y1 = torch.max(py1, ty1)
-    inter_x2 = torch.min(px2, tx2)
-    inter_y2 = torch.min(py2, ty2)
-    inter = (inter_x2 - inter_x1).clamp(0) * (inter_y2 - inter_y1).clamp(0)
-
-    area_p = (px2 - px1) * (py2 - py1)
-    area_t = (tx2 - tx1) * (ty2 - ty1)
-    union = area_p + area_t - inter + eps
-    iou = inter / union
-
-    cx_p, cy_p = (px1 + px2) / 2, (py1 + py2) / 2
-    cx_t, cy_t = (tx1 + tx2) / 2, (ty1 + ty2) / 2
-    rho2 = (cx_p - cx_t) ** 2 + (cy_p - cy_t) ** 2
-    enc_x1 = torch.min(px1, tx1)
-    enc_y1 = torch.min(py1, ty1)
-    enc_x2 = torch.max(px2, tx2)
-    enc_y2 = torch.max(py2, ty2)
-    c2 = (enc_x2 - enc_x1) ** 2 + (enc_y2 - enc_y1) ** 2 + eps
-    return (1 - iou + rho2 / c2).mean()
+from torchvision.models import efficientnet_b0
 
 class PneumoniaDetector(nn.Module):
     def __init__(self, num_classes=2):
@@ -182,11 +187,45 @@ class PneumoniaDetector(nn.Module):
         self.head = nn.Conv2d(1280, num_classes * 4, kernel_size=1)
 
     def forward(self, x):
-        feat = self.backbone(x)
-        return self.head(feat)`,
+        return self.head(self.backbone(x))`,
+      loss: `import torch
+
+def ciou_loss(pred_boxes, target_boxes, eps=1e-7):
+    """CIoU: IoU minus normalized center distance d^2 / c^2."""
+    px1, py1, px2, py2 = pred_boxes.unbind(-1)
+    tx1, ty1, tx2, ty2 = target_boxes.unbind(-1)
+
+    inter = (
+        (torch.min(px2, tx2) - torch.max(px1, tx1)).clamp(0)
+        * (torch.min(py2, ty2) - torch.max(py1, ty1)).clamp(0)
+    )
+    union = (px2 - px1) * (py2 - py1) + (tx2 - tx1) * (ty2 - ty1) - inter + eps
+    iou = inter / union
+
+    cx_p, cy_p = (px1 + px2) / 2, (py1 + py2) / 2
+    cx_t, cy_t = (tx1 + tx2) / 2, (ty1 + ty2) / 2
+    d2 = (cx_p - cx_t) ** 2 + (cy_p - cy_t) ** 2
+    c2 = (
+        (torch.max(px2, tx2) - torch.min(px1, tx1)) ** 2
+        + (torch.max(py2, ty2) - torch.min(py1, ty1)) ** 2
+        + eps
+    )
+    return (1 - iou + d2 / c2).mean()`,
+      augmentation: `import torch
+import torchvision.transforms as T
+
+chest_xray_augment = T.Compose([
+    T.RandomHorizontalFlip(p=0.5),
+    T.RandomAffine(degrees=7, translate=(0.05, 0.05), scale=(0.95, 1.05)),
+    T.ColorJitter(brightness=0.15, contrast=0.15),
+    # Simulates noisy RSNA label robustness
+    T.Lambda(lambda x: x + torch.randn_like(x) * 0.02),
+])`,
+    },
   },
   {
     id: "ptb-xl-ecg",
+    listedOrder: 4,
     title: "PTB-XL ECG Arrhythmia Classification",
     competitionName: "PTB-XL 12-Lead ECG",
     domain: "Biosignal",
@@ -195,13 +234,14 @@ class PneumoniaDetector(nn.Module):
     sotaModel: "1D ResNet",
     lossName: "Weighted BCE Loss",
     lossFormula:
-      "$\\mathcal{L}_{wBCE} = -\\sum_c w_c \\big[ y_c \\log \\sigma(\\hat{y}_c) + (1-y_c)\\log(1-\\sigma(\\hat{y}_c)) \\big]$",
+      "$\\mathcal{L}_{wBCE} = -\\sum_{c} w_{c} \\left[ y_{c} \\log \\sigma(\\hat{y}_{c}) + (1-y_{c})\\log(1-\\sigma(\\hat{y}_{c})) \\right]$",
     metricName: "Macro AUROC",
     metricValue: "0.93",
     paperUrl: "https://arxiv.org/abs/2004.06107",
     colabUrl:
       "https://colab.research.google.com/github/helme/ptbxl_benchmarking/blob/master/notebooks/1d_cnn_baseline.ipynb",
-    codeSnippet: `import torch
+    codeSnippets: {
+      model: `import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -230,18 +270,28 @@ class ECGResNet1D(nn.Module):
         self.fc = nn.Linear(64, num_classes)
 
     def forward(self, x):
-        # x: (B, 12, 5000) — 10 s @ 500 Hz
         x = F.relu(self.stem(x))
         x = self.blocks(x)
-        x = self.pool(x).squeeze(-1)
-        return self.fc(x)
+        return self.fc(self.pool(x).squeeze(-1))`,
+      loss: `import torch
+import torch.nn as nn
 
-# Class weights from inverse frequency (arrhythmia rarity)
 class_weights = torch.tensor([0.4, 2.1, 3.8, 5.2, 1.6])
 criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights)`,
+      augmentation: `import torch
+
+def ecg_signal_augment(waveform: torch.Tensor) -> torch.Tensor:
+    """PTB-XL 12-lead augmentation: scale, shift, Gaussian noise."""
+    scale = 0.9 + torch.rand(1).item() * 0.2
+    shift = int(torch.randint(-25, 26, (1,)).item())
+    noisy = waveform * scale
+    noisy = torch.roll(noisy, shifts=shift, dims=-1)
+    return noisy + torch.randn_like(noisy) * 0.01`,
+    },
   },
   {
     id: "rsna-miccai-radiogenomics",
+    listedOrder: 5,
     title: "RSNA-MICCAI Brain Tumor Radiogenomics",
     competitionName: "RSNA-MICCAI Brain Tumor",
     domain: "3D Image",
@@ -250,32 +300,39 @@ criterion = nn.BCEWithLogitsLoss(pos_weight=class_weights)`,
     sotaModel: "ResNet3D",
     lossName: "Cross Entropy",
     lossFormula:
-      "$\\mathcal{L}_{CE} = -\\sum_{c=1}^{C} y_c \\log(\\text{softmax}(\\hat{y})_c)$",
+      "$\\mathcal{L}_{\\mathrm{CE}} = -\\sum_{c=1}^{C} y_{c} \\log(\\mathrm{softmax}(\\hat{y})_{c})$",
     metricName: "Balanced Accuracy",
     metricValue: "0.78",
     paperUrl: "https://arxiv.org/abs/2102.12332",
     colabUrl:
       "https://colab.research.google.com/github/Project-MONAI/tutorials/blob/main/3d_classification/brats_classification.ipynb",
-    codeSnippet: `import torch
+    codeSnippets: {
+      model: `import torch
 import torch.nn as nn
 from monai.networks.nets import resnet18
-from monai.transforms import (
+
+class VolumeClassifier3D(nn.Module):
+    def __init__(self, num_classes=3):
+        super().__init__()
+        self.encoder = resnet18(
+            spatial_dims=3,
+            n_input_channels=4,
+            num_classes=num_classes,
+        )
+
+    def forward(self, x):
+        return self.encoder(x)
+
+model = VolumeClassifier3D(num_classes=3).cuda()`,
+      loss: `import torch.nn as nn
+
+criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)`,
+      augmentation: `from monai.transforms import (
     Compose, LoadImaged, EnsureChannelFirstd,
     Orientationd, Spacingd, ScaleIntensityRanged,
     RandAffined, ToTensord,
 )
-
-class VolumeClassifier3D(nn.Module):
-  def __init__(self, num_classes=3):
-    super().__init__()
-    self.encoder = resnet18(
-        spatial_dims=3,
-        n_input_channels=4,
-        num_classes=num_classes,
-    )
-
-  def forward(self, x):
-    return self.encoder(x)
 
 train_transforms = Compose([
     LoadImaged(keys=["image"]),
@@ -293,11 +350,8 @@ train_transforms = Compose([
         mode="bilinear", padding_mode="zeros",
     ),
     ToTensord(keys=["image"]),
-])
-
-model = VolumeClassifier3D(num_classes=3).cuda()
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-criterion = nn.CrossEntropyLoss(label_smoothing=0.1)`,
+])`,
+    },
   },
 ];
 
